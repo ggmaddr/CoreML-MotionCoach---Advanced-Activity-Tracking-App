@@ -615,7 +615,67 @@ struct CreateGoalView: View {
     }
 }
 
-extension GoalType: CaseIterable {}
+
+struct AchievementRow: View {
+    let achievement: Achievement
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: achievement.icon)
+                .font(.title2)
+                .foregroundColor(achievement.isUnlocked ? achievementColor : .gray)
+                .frame(width: 40, height: 40)
+                .background(
+                    Circle()
+                        .fill(achievement.isUnlocked ? achievementColor.opacity(0.2) : Color.gray.opacity(0.1))
+                )
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(achievement.name)
+                    .font(.headline)
+                    .foregroundColor(achievement.isUnlocked ? .white : .gray)
+                
+                Text(achievement.description)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                
+                if let daysAgo = achievement.daysAgo {
+                    Text("Unlocked \(daysAgo) day\(daysAgo == 1 ? "" : "s") ago")
+                        .font(.caption2)
+                        .foregroundColor(.green)
+                } else {
+                    Text("Locked")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                }
+                
+                Text(achievement.funnyComment)
+                    .font(.caption2)
+                    .italic()
+                    .foregroundColor(.gray.opacity(0.8))
+                    .padding(.top, 2)
+            }
+            
+            Spacer()
+            
+            if achievement.isUnlocked {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+    
+    private var achievementColor: Color {
+        switch achievement.color {
+        case "bronze": return Color(red: 0.8, green: 0.5, blue: 0.2)
+        case "silver": return Color(red: 0.75, green: 0.75, blue: 0.75)
+        case "gold": return Color(red: 1.0, green: 0.84, blue: 0.0)
+        case "ruby": return Color(red: 0.88, green: 0.07, blue: 0.37)
+        default: return .gray
+        }
+    }
+}
 
 struct ProfileView: View {
     @EnvironmentObject var rewardsManager: RewardsManager
@@ -674,15 +734,15 @@ struct ProfileView: View {
                     .background(BlurView(style: .systemUltraThinMaterialDark))
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     
-                    // Achievements placeholder
-                    VStack(alignment: .leading, spacing: 12) {
+                    // Achievements
+                    VStack(alignment: .leading, spacing: 16) {
                         Text("Achievements")
                             .font(.headline)
                             .foregroundColor(.white)
                         
-                        Text("Coming soon")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
+                        ForEach(MockData.achievements) { achievement in
+                            AchievementRow(achievement: achievement)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
@@ -854,12 +914,12 @@ struct ActivitySummaryView: View {
                 verifyGoals()
                 generateInsights()
             }
+        }
+    }
     
     private func generateInsights() {
         guard let activity = activity else { return }
         insights = insightsEngine.generateActivityInsights(activity: activity)
-    }
-        }
     }
     
     private func verifyGoals() {

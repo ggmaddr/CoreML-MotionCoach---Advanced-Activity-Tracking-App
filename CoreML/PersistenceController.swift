@@ -1,7 +1,7 @@
 import CoreData
 import Foundation
 
-class PersistenceController: ObservableObject {
+class PersistenceController {
     static let shared = PersistenceController()
     
     let container: NSPersistentContainer

@@ -2,6 +2,8 @@ import Foundation
 import CoreLocation
 import CoreMotion
 import Combine
+import UIKit
+import MapKit
 
 @MainActor
 class TrackingEngine: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -68,7 +70,12 @@ class TrackingEngine: NSObject, ObservableObject, CLLocationManagerDelegate {
         locationManager?.delegate = self
         locationManager?.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         locationManager?.activityType = .fitness
-        locationManager?.allowsBackgroundLocationUpdates = true
+        // Only enable background updates if authorized
+        #if !targetEnvironment(simulator)
+        if CLLocationManager.authorizationStatus() == .authorizedAlways {
+            locationManager?.allowsBackgroundLocationUpdates = true
+        }
+        #endif
         locationManager?.pausesLocationUpdatesAutomatically = true
         
         let authStatus = locationManager?.authorizationStatus ?? .notDetermined

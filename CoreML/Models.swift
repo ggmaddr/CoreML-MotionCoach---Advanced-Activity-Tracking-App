@@ -13,7 +13,7 @@ enum MotionActivityType: String, Codable {
     case walking, running, automotive, stationary
 }
 
-enum GoalType: String, Codable {
+enum GoalType: String, Codable, CaseIterable {
     case distance, duration, elevationGain, sessionsCount
 }
 
