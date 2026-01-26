@@ -13,13 +13,9 @@ class RewardsManager: ObservableObject {
            let decoded = try? JSONDecoder().decode(UserProgress.self, from: data) {
             userProgress = decoded
         } else {
-            userProgress = UserProgress(
-                currentXP: 0,
-                level: 1,
-                streakDays: 0,
-                lastCompletionDate: nil,
-                weeklyCompletionsCount: 0
-            )
+            // Use mock data for demo
+            userProgress = MockData.sampleUserProgress
+            saveProgress()
         }
     }
     

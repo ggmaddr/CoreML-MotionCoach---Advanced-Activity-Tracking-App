@@ -9,6 +9,11 @@ class GoalsManager: ObservableObject {
     
     init() {
         loadGoals()
+        // Add sample goals if empty (for demo)
+        if goals.isEmpty {
+            goals = MockData.sampleGoals
+            saveGoals()
+        }
     }
     
     func createGoal(

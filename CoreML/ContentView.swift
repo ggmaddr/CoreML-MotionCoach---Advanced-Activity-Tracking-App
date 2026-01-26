@@ -415,6 +415,8 @@ struct PermissionSheet: View {
 struct GoalsView: View {
     @EnvironmentObject var goalsManager: GoalsManager
     @State private var showCreateGoal = false
+    @State private var showMaxGoalsAlert = false
+    @State private var isAddButtonPressed = false
     
     var body: some View {
         NavigationStack {
@@ -422,16 +424,94 @@ struct GoalsView: View {
                 Color.black.ignoresSafeArea()
                 
                 if goalsManager.goals.isEmpty {
-                    VStack(spacing: 16) {
-                        Image(systemName: "target")
-                            .font(.system(size: 60))
-                            .foregroundColor(.gray)
-                        Text("No Goals Yet")
-                            .font(.title2)
+                    VStack(spacing: 32) {
+                        // Icon with animation
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.green.opacity(0.3), Color.blue.opacity(0.3)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 120, height: 120)
+                                .blur(radius: 20)
+                            
+                            Image(systemName: "target")
+                                .font(.system(size: 60))
+                                .foregroundColor(.white)
+                        }
+                        
+                        VStack(spacing: 12) {
+                            Text("No Goals Yet")
+                                .font(.title)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                            
+                            Text("Set your first goal and start\nyour fitness journey today! 🚀")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.center)
+                        }
+                        
+                        // Amazing Add Goal Button
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                isAddButtonPressed = true
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                    isAddButtonPressed = false
+                                }
+                                checkAndAddGoal()
+                            }
+                        }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title2)
+                                Text("Create Your First Goal")
+                                    .font(.headline)
+                            }
                             .foregroundColor(.white)
-                        Text("Create your first goal to get started")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
+                            .padding(.horizontal, 32)
+                            .padding(.vertical, 18)
+                            .background(
+                                ZStack {
+                                    LinearGradient(
+                                        colors: [Color.green, Color.blue],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                    .blur(radius: isAddButtonPressed ? 0 : 2)
+                                    
+                                    // Shimmer effect
+                                    LinearGradient(
+                                        colors: [
+                                            Color.white.opacity(0.0),
+                                            Color.white.opacity(0.3),
+                                            Color.white.opacity(0.0)
+                                        ],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                }
+                            )
+                            .clipShape(Capsule())
+                            .shadow(color: .green.opacity(0.5), radius: isAddButtonPressed ? 10 : 20, x: 0, y: isAddButtonPressed ? 4 : 10)
+                            .scaleEffect(isAddButtonPressed ? 0.95 : 1.0)
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(
+                                        LinearGradient(
+                                            colors: [Color.white.opacity(0.3), Color.white.opacity(0.1)],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        ),
+                                        lineWidth: 2
+                                    )
+                            )
+                        }
                     }
                 } else {
                     ScrollView {
@@ -448,8 +528,9 @@ struct GoalsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showCreateGoal = true }) {
-                        Image(systemName: "plus")
+                    Button(action: { checkAndAddGoal() }) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title3)
                             .foregroundColor(.green)
                     }
                 }
@@ -457,6 +538,19 @@ struct GoalsView: View {
             .sheet(isPresented: $showCreateGoal) {
                 CreateGoalView()
             }
+            .alert("Maximum Goals Reached", isPresented: $showMaxGoalsAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("You can only have 10 active goals at a time. Please complete or remove some goals before creating new ones.")
+            }
+        }
+    }
+    
+    private func checkAndAddGoal() {
+        if goalsManager.goals.count >= 10 {
+            showMaxGoalsAlert = true
+        } else {
+            showCreateGoal = true
         }
     }
 }
@@ -464,35 +558,89 @@ struct GoalsView: View {
 struct GoalRowView: View {
     let goal: Goal
     @EnvironmentObject var goalsManager: GoalsManager
+    @State private var animatedProgress: Double = 0
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(goal.title)
-                    .font(.headline)
-                    .foregroundColor(.white)
-                Spacer()
-                Text(goal.status.rawValue.capitalized)
-                    .font(.caption)
-                    .foregroundColor(statusColor)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(statusColor.opacity(0.2))
-                    .clipShape(Capsule())
-            }
+        HStack(spacing: 0) {
+            // Left colored indicator bar
+            RoundedRectangle(cornerRadius: 8)
+                .fill(goalColor)
+                .frame(width: 6)
             
-            Text(goalDescription)
-                .font(.subheadline)
-                .foregroundColor(.gray)
-            
-            if goal.status == .active {
-                ProgressView(value: 0.0, total: 1.0)
-                    .tint(.green)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    // Icon
+                    Image(systemName: goalIcon)
+                        .font(.title3)
+                        .foregroundColor(goalColor)
+                    
+                    Text(goal.title)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    if goal.status == .active {
+                        Text("\(Int(progress * 100))%")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(goalColor)
+                    } else {
+                        Text(goal.status.rawValue.capitalized)
+                            .font(.caption)
+                            .foregroundColor(statusColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(statusColor.opacity(0.2))
+                            .clipShape(Capsule())
+                    }
+                }
+                
+                HStack(spacing: 8) {
+                    Image(systemName: timeframeIcon)
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    
+                    Text(goalDescription)
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                }
+                
+                if goal.status == .active {
+                    // Progress bar matching image style
+                    ZStack(alignment: .leading) {
+                        // Background
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(height: 8)
+                        
+                        // Progress
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(
+                                LinearGradient(
+                                    colors: [goalColor, goalColor.opacity(0.7)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: max(0, CGFloat(animatedProgress) * (UIScreen.main.bounds.width - 100)), height: 8)
+                    }
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 1.0)) {
+                            animatedProgress = progress
+                        }
+                    }
+                }
             }
+            .padding()
         }
-        .padding()
-        .background(BlurView(style: .systemUltraThinMaterialDark))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(goalColor.opacity(0.2), lineWidth: 1)
+        )
     }
     
     private var goalDescription: String {
@@ -516,6 +664,46 @@ struct GoalRowView: View {
         case .active: return .green
         case .completed: return .blue
         case .expired: return .gray
+        }
+    }
+    
+    private var goalColor: Color {
+        switch goal.type {
+        case .distance: return Color.green
+        case .duration: return Color.orange
+        case .elevationGain: return Color.purple
+        case .sessionsCount: return Color.blue
+        }
+    }
+    
+    private var goalIcon: String {
+        switch goal.type {
+        case .distance: return "figure.run"
+        case .duration: return "clock.fill"
+        case .elevationGain: return "mountain.2.fill"
+        case .sessionsCount: return "repeat"
+        }
+    }
+    
+    private var timeframeIcon: String {
+        switch goal.timeframe {
+        case .today: return "calendar"
+        case .thisWeek: return "calendar.badge.clock"
+        case .customRange: return "calendar.badge.exclamationmark"
+        }
+    }
+    
+    private var progress: Double {
+        // Mock progress for demo - in real app would calculate from actual activities
+        switch goal.status {
+        case .active:
+            // Return random progress between 0.3 and 0.8 for demo
+            let hash = abs(goal.id.hashValue)
+            return Double((hash % 50) + 30) / 100.0
+        case .completed:
+            return 1.0
+        case .expired:
+            return 0.0
         }
     }
 }

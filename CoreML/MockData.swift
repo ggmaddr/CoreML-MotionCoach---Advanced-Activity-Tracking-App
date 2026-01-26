@@ -3,12 +3,54 @@ import Foundation
 /// Mock data for development and demo purposes
 struct MockData {
     
+    static let sampleGoals: [Goal] = [
+        Goal(
+            id: UUID(),
+            title: "Morning Run",
+            type: .distance,
+            targetValue: 5000, // 5km
+            timeframe: .today,
+            allowedActivities: [.run],
+            verificationMode: .matchedDistance,
+            minConfidenceAvg: 0.7,
+            status: .active,
+            mustBeContinuous: true,
+            minDuration: nil
+        ),
+        Goal(
+            id: UUID(),
+            title: "Weekly Cardio",
+            type: .duration,
+            targetValue: 3600, // 1 hour
+            timeframe: .thisWeek,
+            allowedActivities: [.run, .walk],
+            verificationMode: .matchedDistance,
+            minConfidenceAvg: 0.5,
+            status: .active,
+            mustBeContinuous: false,
+            minDuration: nil
+        ),
+        Goal(
+            id: UUID(),
+            title: "Hill Workout",
+            type: .elevationGain,
+            targetValue: 200, // 200m elevation
+            timeframe: .today,
+            allowedActivities: [.hike, .run],
+            verificationMode: .matchedDistance,
+            minConfidenceAvg: 0.6,
+            status: .active,
+            mustBeContinuous: true,
+            minDuration: 1800
+        )
+    ]
+    
     static let sampleUserProgress = UserProgress(
-        currentXP: 520,
+        currentXP: 450,
         level: 5,
-        streakDays: 7,
+        streakDays: 15,
         lastCompletionDate: Date(),
-        weeklyCompletionsCount: 3
+        weeklyCompletionsCount: 6
     )
     
     static let achievements: [Achievement] = [
