@@ -29,28 +29,45 @@ struct HomeMapView: View {
         NavigationStack {
             ZStack(alignment: .bottom) {
                 // Map with route polyline
-                MapViewWithPolyline(
-                    region: $region,
-                    showsUserLocation: true,
-                    userTrackingMode: trackingEngine.isTracking ? .follow : .none,
-                    polylineCoordinates: trackingEngine.route
-                )
-                .edgesIgnoringSafeArea(.all)
-                .accentColor(.green)
+                ZStack {
+                    MapViewWithPolyline(
+                        region: $region,
+                        showsUserLocation: true,
+                        userTrackingMode: trackingEngine.isTracking ? .follow : .none,
+                        polylineCoordinates: trackingEngine.route
+                    )
+                    .edgesIgnoringSafeArea(.all)
+                    .accentColor(.green)
+                    
+                    // Subtle vignette effect
+                    LinearGradient(
+                        colors: [
+                            Color.black.opacity(0.3),
+                            Color.clear,
+                            Color.clear,
+                            Color.black.opacity(0.4)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                }
                     .onAppear {
                         checkLocationPermission()
                     }
                 
                 VStack(spacing: 0) {
                     // Top overlay chips
-                    HStack(spacing: 16) {
+                    HStack(spacing: 12) {
                         Button {
                             navigateToGoals = true
                         } label: {
                             statusChip(
                                 title: "Today",
                                 value: "\(rewardsManager.userProgress.currentXP) XP",
-                                systemImage: "bolt.fill"
+                                systemImage: "bolt.fill",
+                                color: .yellow
                             )
                         }
                         .buttonStyle(.plain)
@@ -61,59 +78,126 @@ struct HomeMapView: View {
                             statusChip(
                                 title: "Streak",
                                 value: "\(rewardsManager.userProgress.streakDays) days",
-                                systemImage: "flame.fill"
+                                systemImage: "flame.fill",
+                                color: .orange
                             )
                         }
                         .buttonStyle(.plain)
                     }
                     .padding(.top, 56)
                     .padding(.horizontal)
+                    .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
                     
                     Spacer()
                     
-                    // Tracking bottom sheet
-                    if trackingEngine.isTracking {
+                    // Tracking bottom sheet or goals carousel
+                    if trackingEngine.isTracking || trackingEngine.activityState == .summarizing {
                         trackingBottomSheet
                     } else {
-                        // Goals carousel (when not tracking)
+                        // Goals carousel (when idle)
                         if !goalsManager.getActiveGoals().isEmpty {
                             goalsCarousel
                                 .padding(.bottom, 20)
                         }
                     }
                     
-                    // Start/Stop button
-                    Button(action: {
-                        if trackingEngine.isTracking {
-                            trackingEngine.stopTracking()
-                            if let activity = trackingEngine.currentActivity {
-                                completedActivity = activity
-                                navigateToActivitySummary = true
+                    // Control buttons
+                    if trackingEngine.activityState == .summarizing {
+                        HStack(spacing: 16) {
+                            // Reset button
+                            Button(action: {
+                                trackingEngine.reset()
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "arrow.counterclockwise")
+                                        .font(.title3)
+                                    Text("Reset")
+                                        .font(.system(size: 18, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .frame(width: 140, height: 56)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color.gray.opacity(0.8), Color.gray.opacity(0.6)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .clipShape(Capsule())
+                                .shadow(color: Color.gray.opacity(0.4), radius: 12, x: 0, y: 4)
+                                .overlay(
+                                    Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                                )
                             }
-                        } else {
-                            trackingEngine.startTracking()
+                            
+                            // Resume button
+                            Button(action: {
+                                trackingEngine.resumeTracking()
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "play.fill")
+                                        .font(.title3)
+                                    Text("Resume")
+                                        .font(.system(size: 18, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .frame(width: 140, height: 56)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color.green.opacity(0.8), Color.blue.opacity(0.8)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .clipShape(Capsule())
+                                .shadow(color: Color.green.opacity(0.4), radius: 18, x: 0, y: 6)
+                                .overlay(
+                                    Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                                )
+                            }
                         }
-                    }) {
-                        Text(trackingEngine.isTracking ? "Stop" : "Start")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                            .frame(width: 180, height: 56)
-                            .background(
-                                LinearGradient(
-                                    colors: trackingEngine.isTracking
-                                        ? [Color.red.opacity(0.8), Color.orange.opacity(0.8)]
-                                        : [Color.green.opacity(0.8), Color.blue.opacity(0.8)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
+                        .padding(.bottom, 40)
+                    } else {
+                        // Start/Stop button
+                        Button(action: {
+                            if trackingEngine.isTracking {
+                                trackingEngine.stopTracking()
+                            } else {
+                                trackingEngine.startTracking()
+                            }
+                        }) {
+                            Text(trackingEngine.isTracking ? "Stop" : "Start")
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                                .frame(width: 180, height: 56)
+                                .background(
+                                    LinearGradient(
+                                        colors: trackingEngine.isTracking
+                                            ? [Color.red.opacity(0.8), Color.orange.opacity(0.8)]
+                                            : [Color.green.opacity(0.8), Color.blue.opacity(0.8)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                            .clipShape(Capsule())
+                            .shadow(color: (trackingEngine.isTracking ? Color.red : Color.green).opacity(0.6), radius: 24, x: 0, y: 8)
+                            .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 4)
+                            .overlay(
+                                Capsule().strokeBorder(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.white.opacity(0.4),
+                                            Color.white.opacity(0.1)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 2
                                 )
                             )
-                            .clipShape(Capsule())
-                            .shadow(color: (trackingEngine.isTracking ? Color.red : Color.green).opacity(0.4), radius: 18, x: 0, y: 6)
-                            .overlay(
-                                Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
-                            )
+                        }
+                        .padding(.bottom, 40)
                     }
-                    .padding(.bottom, 40)
                 }
                 
                 // NavigationLinks
@@ -137,7 +221,34 @@ struct HomeMapView: View {
     }
     
     private var trackingBottomSheet: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
+            // Status indicator
+            if trackingEngine.activityState == .summarizing {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.orange.opacity(0.2))
+                            .frame(width: 24, height: 24)
+                        Image(systemName: "pause.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.orange)
+                    }
+                    Text("Paused")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.orange)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(Color.orange.opacity(0.15))
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color.orange.opacity(0.3), lineWidth: 1)
+                        )
+                )
+            }
+            
             // Distance (large)
             VStack(spacing: 4) {
                 Text(formatDistance(trackingEngine.totalDistance))
@@ -193,10 +304,42 @@ struct HomeMapView: View {
                 GoalProgressBar(goal: activeGoal, currentDistance: trackingEngine.totalDistance)
             }
         }
-        .padding()
-        .background(BlurView(style: .systemUltraThinMaterialDark))
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .padding(.horizontal)
+        .padding(24)
+        .background(
+            ZStack {
+                // Primary blur
+                BlurView(style: .systemUltraThinMaterialDark)
+                
+                // Gradient overlay
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.05),
+                        Color.clear,
+                        Color.black.opacity(0.2)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.3),
+                            Color.white.opacity(0.05),
+                            Color.clear
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.5
+                )
+        )
+        .shadow(color: .black.opacity(0.4), radius: 30, x: 0, y: 15)
+        .padding(.horizontal, 20)
         .padding(.bottom, 20)
     }
     
@@ -212,25 +355,63 @@ struct HomeMapView: View {
     }
     
     @ViewBuilder
-    func statusChip(title: String, value: String, systemImage: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.green)
+    func statusChip(title: String, value: String, systemImage: String, color: Color) -> some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.2))
+                    .frame(width: 32, height: 32)
+                
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(color)
+            }
+            
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.caption2)
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.gray)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
                 Text(value)
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.white)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(BlurView(style: .systemUltraThinMaterialDark))
-        .clipShape(Capsule())
-        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 2)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            ZStack {
+                // Blur background
+                BlurView(style: .systemUltraThinMaterialDark)
+                
+                // Subtle gradient overlay
+                LinearGradient(
+                    colors: [
+                        color.opacity(0.1),
+                        Color.clear
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.2),
+                            Color.white.opacity(0.05)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.5
+                )
+        )
+        .shadow(color: color.opacity(0.3), radius: 12, x: 0, y: 4)
     }
     
     private func checkLocationPermission() {
@@ -340,29 +521,57 @@ struct ConfidenceRing: View {
     
     var body: some View {
         ZStack {
+            // Background ring with subtle glow
             Circle()
-                .stroke(Color.gray.opacity(0.2), lineWidth: 6)
+                .stroke(Color.gray.opacity(0.15), lineWidth: 8)
+                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
             
+            // Progress ring with gradient and glow
             Circle()
                 .trim(from: 0, to: confidence)
                 .stroke(
                     AngularGradient(
-                        colors: [.red, .yellow, .green],
+                        colors: [
+                            Color.red,
+                            Color.orange,
+                            Color.yellow,
+                            Color.green,
+                            Color.green
+                        ],
                         center: .center
                     ),
-                    style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
+                .shadow(color: ringColor.opacity(0.6), radius: 8, x: 0, y: 0)
             
-            VStack(spacing: 2) {
+            // Inner content with glass effect
+            VStack(spacing: 4) {
                 Text("\(Int(confidence * 100))%")
-                    .font(.headline)
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.white)
-                Text("Confidence")
-                    .font(.caption2)
+                Text("Quality")
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.gray)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
             }
+            .padding(12)
+            .background(
+                Circle()
+                    .fill(Color.black.opacity(0.3))
+                    .overlay(
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                    )
+            )
         }
+    }
+    
+    private var ringColor: Color {
+        if confidence >= 0.8 { return .green }
+        else if confidence >= 0.5 { return .yellow }
+        else { return .red }
     }
 }
 
@@ -421,7 +630,44 @@ struct GoalsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                // Animated gradient background
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.05, green: 0.1, blue: 0.2),
+                        Color.black,
+                        Color(red: 0.1, green: 0.05, blue: 0.15)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                // Floating orbs for depth
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color.green.opacity(0.3), Color.clear],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 200
+                        )
+                    )
+                    .frame(width: 400, height: 400)
+                    .offset(x: -100, y: -200)
+                    .blur(radius: 60)
+                
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color.blue.opacity(0.25), Color.clear],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 150
+                        )
+                    )
+                    .frame(width: 300, height: 300)
+                    .offset(x: 150, y: 300)
+                    .blur(radius: 50)
                 
                 if goalsManager.goals.isEmpty {
                     VStack(spacing: 32) {
@@ -514,13 +760,61 @@ struct GoalsView: View {
                         }
                     }
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 16) {
-                            ForEach(goalsManager.goals) { goal in
-                                GoalRowView(goal: goal)
+                    VStack(spacing: 0) {
+                        ScrollView {
+                            LazyVStack(spacing: 16) {
+                                ForEach(goalsManager.goals) { goal in
+                                    GoalRowView(goal: goal)
+                                }
                             }
+                            .padding()
+                            .padding(.bottom, 80)
                         }
-                        .padding()
+                        
+                        // Add Goal Button at bottom
+                        VStack {
+                            Button(action: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                    isAddButtonPressed = true
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                        isAddButtonPressed = false
+                                    }
+                                    checkAndAddGoal()
+                                }
+                            }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.title3)
+                                    Text("Add Goal")
+                                        .font(.system(size: 18, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color.green, Color.blue],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .shadow(color: .green.opacity(0.4), radius: isAddButtonPressed ? 8 : 16, x: 0, y: isAddButtonPressed ? 2 : 8)
+                                .scaleEffect(isAddButtonPressed ? 0.98 : 1.0)
+                            }
+                            .padding(.horizontal)
+                            .padding(.bottom, 16)
+                        }
+                        .background(
+                            LinearGradient(
+                                colors: [Color.black.opacity(0.0), Color.black],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .ignoresSafeArea()
+                        )
                     }
                 }
             }
@@ -804,6 +1098,135 @@ struct CreateGoalView: View {
 }
 
 
+struct NextMilestoneBar: View {
+    // For demo: 75km out of 100km for Ruby
+    private let currentProgress: Double = 75.0
+    private let targetProgress: Double = 100.0
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "flag.fill")
+                    .foregroundColor(.orange)
+                Text("Next Milestone")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Spacer()
+                Text("\(Int(currentProgress))km / \(Int(targetProgress))km")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+            }
+            
+            // Progress bar with runner icon
+            ZStack(alignment: .leading) {
+                // Background track
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(height: 24)
+                
+                // Progress fill
+                GeometryReader { geometry in
+                    let progress = currentProgress / targetProgress
+                    let width = geometry.size.width * progress
+                    
+                    ZStack(alignment: .leading) {
+                        // Gradient progress bar
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 1.0, green: 0.84, blue: 0.0), // Gold
+                                        Color(red: 0.88, green: 0.07, blue: 0.37) // Ruby
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: width, height: 24)
+                        
+                        // Runner icon at progress point
+                        HStack {
+                            Spacer()
+                            ZStack {
+                                Circle()
+                                    .fill(Color.white)
+                                    .frame(width: 36, height: 36)
+                                    .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+                                
+                                Image(systemName: "figure.run")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(Color(red: 0.88, green: 0.07, blue: 0.37))
+                            }
+                            .offset(x: 6)
+                        }
+                        .frame(width: max(0, width - 18), height: 24)
+                    }
+                }
+                .frame(height: 24)
+                
+                // Target milestone icon
+                HStack {
+                    Spacer()
+                    ZStack {
+                        Circle()
+                            .fill(Color(red: 0.88, green: 0.07, blue: 0.37).opacity(0.2))
+                            .frame(width: 40, height: 40)
+                        
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(Color(red: 0.88, green: 0.07, blue: 0.37))
+                    }
+                    .offset(x: 8)
+                }
+            }
+            .frame(height: 40)
+            
+            // Milestone name
+            HStack {
+                Image(systemName: "star.fill")
+                    .font(.caption)
+                    .foregroundColor(Color(red: 0.88, green: 0.07, blue: 0.37))
+                Text("Ruby Warrior - Run 100km total")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                Spacer()
+                Text("\(Int((currentProgress / targetProgress) * 100))%")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundColor(Color(red: 0.88, green: 0.07, blue: 0.37))
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.88, green: 0.07, blue: 0.37).opacity(0.1),
+                            Color(red: 0.88, green: 0.07, blue: 0.37).opacity(0.05)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.88, green: 0.07, blue: 0.37).opacity(0.4),
+                            Color(red: 0.88, green: 0.07, blue: 0.37).opacity(0.2)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 2
+                )
+        )
+    }
+}
+
 struct AchievementRow: View {
     let achievement: Achievement
     
@@ -870,76 +1293,351 @@ struct ProfileView: View {
     
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Level & XP
-                    VStack(spacing: 16) {
-                        Text("Level \(rewardsManager.userProgress.level)")
-                            .font(.system(size: 48, weight: .bold))
-                            .foregroundColor(.white)
+            ZStack {
+                // Epic gradient background
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.15, green: 0.05, blue: 0.2),
+                        Color.black,
+                        Color(red: 0.2, green: 0.1, blue: 0.05)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                // Floating orbs
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color.purple.opacity(0.3), Color.clear],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 150
+                        )
+                    )
+                    .frame(width: 300, height: 300)
+                    .offset(x: -100, y: -200)
+                    .blur(radius: 60)
+                
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color.orange.opacity(0.25), Color.clear],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 120
+                        )
+                    )
+                    .frame(width: 250, height: 250)
+                    .offset(x: 120, y: 300)
+                    .blur(radius: 50)
+                
+                ScrollView {
+                    VStack(spacing: 32) {
+                        // Hero section with level
+                        VStack(spacing: 20) {
+                            // Glowing level badge
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        RadialGradient(
+                                            colors: [
+                                                Color.yellow.opacity(0.3),
+                                                Color.orange.opacity(0.2),
+                                                Color.clear
+                                            ],
+                                            center: .center,
+                                            startRadius: 0,
+                                            endRadius: 80
+                                        )
+                                    )
+                                    .frame(width: 160, height: 160)
+                                    .blur(radius: 25)
+                                
+                                ZStack {
+                                    Circle()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [
+                                                    Color.yellow.opacity(0.3),
+                                                    Color.orange.opacity(0.3)
+                                                ],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .frame(width: 120, height: 120)
+                                    
+                                    Circle()
+                                        .stroke(
+                                            LinearGradient(
+                                                colors: [Color.yellow, Color.orange],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            ),
+                                            lineWidth: 3
+                                        )
+                                        .frame(width: 120, height: 120)
+                                        .shadow(color: .orange.opacity(0.8), radius: 15, x: 0, y: 0)
+                                    
+                                    VStack(spacing: 2) {
+                                        Text("LEVEL")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundColor(.orange.opacity(0.8))
+                                            .tracking(2)
+                                        Text("\(rewardsManager.userProgress.level)")
+                                            .font(.system(size: 44, weight: .heavy))
+                                            .foregroundColor(.white)
+                                            .shadow(color: .orange.opacity(0.5), radius: 8, x: 0, y: 0)
+                                    }
+                                }
+                            }
+                            .padding(.top, 20)
+                            
+                            Text("Fitness Champion")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.gray)
+                                .italic()
+                        }
                         
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("\(rewardsManager.userProgress.currentXP) XP")
-                                    .font(.headline)
+                        // Level & XP
+                        VStack(spacing: 16) {
+                            Text("\(rewardsManager.userProgress.currentXP) XP")
+                                .font(.system(size: 28, weight: .bold))
+                                .foregroundColor(.white)
+                        
+                            // XP Progress bar with epic styling
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Text("\(rewardsManager.getXPForNextLevel()) XP")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(.yellow)
+                                    Text("to Level \(rewardsManager.userProgress.level + 1)")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(.gray)
+                                    Spacer()
+                                    Text("\(Int(rewardsManager.getXPProgress() * 100))%")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundColor(.yellow)
+                                }
+                                
+                                GeometryReader { geometry in
+                                    ZStack(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(Color.gray.opacity(0.15))
+                                            .frame(height: 12)
+                                        
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: [Color.yellow, Color.orange],
+                                                    startPoint: .leading,
+                                                    endPoint: .trailing
+                                                )
+                                            )
+                                            .frame(width: geometry.size.width * CGFloat(rewardsManager.getXPProgress()), height: 12)
+                                            .shadow(color: .yellow.opacity(0.6), radius: 8, x: 0, y: 0)
+                                    }
+                                }
+                                .frame(height: 12)
+                            }
+                        }
+                        .padding(20)
+                        .background(
+                            ZStack {
+                                BlurView(style: .systemUltraThinMaterialDark)
+                                
+                                LinearGradient(
+                                    colors: [
+                                        Color.yellow.opacity(0.08),
+                                        Color.clear,
+                                        Color.orange.opacity(0.08)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            }
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 24)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.yellow.opacity(0.4),
+                                            Color.orange.opacity(0.2)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 2
+                                )
+                        )
+                        .shadow(color: .yellow.opacity(0.2), radius: 20, x: 0, y: 10)
+                    
+                        // Streak cards with epic styling
+                        HStack(spacing: 16) {
+                            // Streak card
+                            VStack(spacing: 10) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.orange.opacity(0.2))
+                                        .frame(width: 50, height: 50)
+                                    
+                                    Image(systemName: "flame.fill")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.orange)
+                                        .shadow(color: .orange.opacity(0.8), radius: 8, x: 0, y: 0)
+                                }
+                                
+                                Text("\(rewardsManager.userProgress.streakDays)")
+                                    .font(.system(size: 34, weight: .heavy))
                                     .foregroundColor(.white)
-                                Spacer()
-                                Text("\(rewardsManager.getXPForNextLevel()) XP to next level")
-                                    .font(.caption)
+                                
+                                Text("Day Streak")
+                                    .font(.system(size: 11, weight: .medium))
                                     .foregroundColor(.gray)
+                                    .textCase(.uppercase)
+                                    .tracking(0.8)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
+                            .background(
+                                ZStack {
+                                    BlurView(style: .systemUltraThinMaterialDark)
+                                    
+                                    LinearGradient(
+                                        colors: [
+                                            Color.orange.opacity(0.15),
+                                            Color.clear
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                }
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .strokeBorder(Color.orange.opacity(0.3), lineWidth: 1.5)
+                            )
+                            .shadow(color: .orange.opacity(0.3), radius: 15, x: 0, y: 8)
+                            
+                            // Weekly card
+                            VStack(spacing: 10) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.green.opacity(0.2))
+                                        .frame(width: 50, height: 50)
+                                    
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.green)
+                                        .shadow(color: .green.opacity(0.8), radius: 8, x: 0, y: 0)
+                                }
+                                
+                                Text("\(rewardsManager.userProgress.weeklyCompletionsCount)")
+                                    .font(.system(size: 34, weight: .heavy))
+                                    .foregroundColor(.white)
+                                
+                                Text("This Week")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.gray)
+                                    .textCase(.uppercase)
+                                    .tracking(0.8)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
+                            .background(
+                                ZStack {
+                                    BlurView(style: .systemUltraThinMaterialDark)
+                                    
+                                    LinearGradient(
+                                        colors: [
+                                            Color.green.opacity(0.15),
+                                            Color.clear
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                }
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .strokeBorder(Color.green.opacity(0.3), lineWidth: 1.5)
+                            )
+                            .shadow(color: .green.opacity(0.3), radius: 15, x: 0, y: 8)
+                        }
+                    
+                        // Next Milestone Progress Bar
+                        NextMilestoneBar()
+                        
+                        // Achievements with epic header
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack {
+                                Image(systemName: "trophy.fill")
+                                    .font(.title3)
+                                    .foregroundColor(.yellow)
+                                    .shadow(color: .yellow.opacity(0.8), radius: 8, x: 0, y: 0)
+                                
+                                Text("Achievements")
+                                    .font(.system(size: 20, weight: .bold))
+                                    .foregroundColor(.white)
+                                
+                                Spacer()
+                                
+                                Text("\(MockData.achievements.filter { $0.isUnlocked }.count)/\(MockData.achievements.count)")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.yellow)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Color.yellow.opacity(0.2))
+                                    .clipShape(Capsule())
                             }
                             
-                            ProgressView(value: rewardsManager.getXPProgress(), total: 1.0)
-                                .tint(.green)
+                            ForEach(MockData.achievements) { achievement in
+                                AchievementRow(achievement: achievement)
+                            }
                         }
+                        .padding(20)
+                        .background(
+                            ZStack {
+                                BlurView(style: .systemUltraThinMaterialDark)
+                                
+                                LinearGradient(
+                                    colors: [
+                                        Color.yellow.opacity(0.05),
+                                        Color.clear,
+                                        Color.purple.opacity(0.05)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            }
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 24)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.yellow.opacity(0.3),
+                                            Color.purple.opacity(0.2)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                        )
+                        .shadow(color: .yellow.opacity(0.15), radius: 20, x: 0, y: 10)
                     }
-                    .padding()
-                    .background(BlurView(style: .systemUltraThinMaterialDark))
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                    
-                    // Streak
-                    HStack(spacing: 24) {
-                        VStack {
-                            Text("\(rewardsManager.userProgress.streakDays)")
-                                .font(.system(size: 36, weight: .bold))
-                                .foregroundColor(.orange)
-                            Text("Day Streak")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        }
-                        
-                        VStack {
-                            Text("\(rewardsManager.userProgress.weeklyCompletionsCount)")
-                                .font(.system(size: 36, weight: .bold))
-                                .foregroundColor(.green)
-                            Text("This Week")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(BlurView(style: .systemUltraThinMaterialDark))
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                    
-                    // Achievements
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Achievements")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        
-                        ForEach(MockData.achievements) { achievement in
-                            AchievementRow(achievement: achievement)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(BlurView(style: .systemUltraThinMaterialDark))
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
                 }
-                .padding()
             }
-            .background(Color.black.ignoresSafeArea())
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
         }

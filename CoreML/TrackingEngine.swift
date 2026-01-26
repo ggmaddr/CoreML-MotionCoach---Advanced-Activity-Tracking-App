@@ -172,6 +172,58 @@ class TrackingEngine: NSObject, ObservableObject, CLLocationManagerDelegate {
         isTracking = false
         activityState = .summarizing
         
+        // Don't process yet - wait for resume or reset
+    }
+    
+    func resumeTracking() {
+        // Resume tracking from paused state
+        isTracking = true
+        activityState = .tracking
+        
+        // Restart location updates
+        locationManager?.startUpdatingLocation()
+        
+        // Restart motion updates
+        motionActivityManager?.startActivityUpdates(to: .main) { [weak self] activity in
+            guard let activity = activity else { return }
+            self?.updateActivityType(from: activity)
+        }
+        
+        // Restart device motion
+        if let motionManager = motionManager, motionManager.isDeviceMotionAvailable {
+            motionManager.startDeviceMotionUpdates(using: .xMagneticNorthZVertical, to: .main) { [weak self] motion, error in
+                guard let motion = motion, error == nil else { return }
+                self?.deviceMotionSamples.append(motion)
+                if self?.deviceMotionSamples.count ?? 0 > 100 {
+                    self?.deviceMotionSamples.removeFirst()
+                }
+            }
+        }
+        
+        // Restart pedometer
+        if CMPedometer.isStepCountingAvailable(), let start = startTime {
+            pedometer?.startUpdates(from: start) { [weak self] data, error in
+                guard let data = data, error == nil else { return }
+                self?.steps = data.numberOfSteps.intValue
+                if let cadenceValue = data.currentCadence?.doubleValue {
+                    self?.cadence = cadenceValue * 60.0
+                }
+                self?.pedometerDataSamples.append(data)
+                if self?.pedometerDataSamples.count ?? 0 > 100 {
+                    self?.pedometerDataSamples.removeFirst()
+                }
+            }
+        }
+        
+        // Restart timer
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.tick()
+            }
+        }
+    }
+    
+    func finishActivity() {
         guard let start = startTime else { return }
         let duration = Date().timeIntervalSince(start)
         
@@ -182,6 +234,15 @@ class TrackingEngine: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     func reset() {
+        // Stop everything first
+        locationManager?.stopUpdatingLocation()
+        motionActivityManager?.stopActivityUpdates()
+        motionManager?.stopDeviceMotionUpdates()
+        pedometer?.stopUpdates()
+        timer?.invalidate()
+        timer = nil
+        
+        // Clear all data
         route.removeAll()
         totalDistance = 0
         elapsedTime = 0
@@ -198,6 +259,10 @@ class TrackingEngine: NSObject, ObservableObject, CLLocationManagerDelegate {
         activityState = .idle
         lastError = nil
         currentActivity = nil
+        startTime = nil
+        lastLocation = nil
+        lastSpeed = nil
+        lastCourse = nil
         sensorFusion.reset()
         activityClassifier.reset()
     }
