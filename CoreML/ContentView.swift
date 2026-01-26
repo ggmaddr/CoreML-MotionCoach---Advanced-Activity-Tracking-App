@@ -6,19 +6,1051 @@
 //
 
 import SwiftUI
+import MapKit
+import CoreLocation
+import UIKit
 
-struct ContentView: View {
+struct HomeMapView: View {
+    @StateObject private var trackingEngine = TrackingEngine()
+    @StateObject private var rewardsManager = RewardsManager()
+    @StateObject private var goalsManager = GoalsManager()
+    
+    @State private var region = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 37.334_900, longitude: -122.009_020),
+        span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+    )
+    @State private var showPermissionSheet = false
+    @State private var navigateToActivitySummary = false
+    @State private var navigateToGoals = false
+    @State private var navigateToProfile = false
+    @State private var completedActivity: Activity?
+    
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        NavigationStack {
+            ZStack(alignment: .bottom) {
+                // Map with route polyline
+                MapViewWithPolyline(
+                    region: $region,
+                    showsUserLocation: true,
+                    userTrackingMode: trackingEngine.isTracking ? .follow : .none,
+                    polylineCoordinates: trackingEngine.route
+                )
+                .edgesIgnoringSafeArea(.all)
+                .accentColor(.green)
+                    .onAppear {
+                        checkLocationPermission()
+                    }
+                
+                VStack(spacing: 0) {
+                    // Top overlay chips
+                    HStack(spacing: 16) {
+                        Button {
+                            navigateToGoals = true
+                        } label: {
+                            statusChip(
+                                title: "Today",
+                                value: "\(rewardsManager.userProgress.currentXP) XP",
+                                systemImage: "bolt.fill"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Button {
+                            navigateToProfile = true
+                        } label: {
+                            statusChip(
+                                title: "Streak",
+                                value: "\(rewardsManager.userProgress.streakDays) days",
+                                systemImage: "flame.fill"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 56)
+                    .padding(.horizontal)
+                    
+                    Spacer()
+                    
+                    // Tracking bottom sheet
+                    if trackingEngine.isTracking {
+                        trackingBottomSheet
+                    } else {
+                        // Goals carousel (when not tracking)
+                        if !goalsManager.getActiveGoals().isEmpty {
+                            goalsCarousel
+                                .padding(.bottom, 20)
+                        }
+                    }
+                    
+                    // Start/Stop button
+                    Button(action: {
+                        if trackingEngine.isTracking {
+                            trackingEngine.stopTracking()
+                            if let activity = trackingEngine.currentActivity {
+                                completedActivity = activity
+                                navigateToActivitySummary = true
+                            }
+                        } else {
+                            trackingEngine.startTracking()
+                        }
+                    }) {
+                        Text(trackingEngine.isTracking ? "Stop" : "Start")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .frame(width: 180, height: 56)
+                            .background(
+                                LinearGradient(
+                                    colors: trackingEngine.isTracking
+                                        ? [Color.red.opacity(0.8), Color.orange.opacity(0.8)]
+                                        : [Color.green.opacity(0.8), Color.blue.opacity(0.8)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .clipShape(Capsule())
+                            .shadow(color: (trackingEngine.isTracking ? Color.red : Color.green).opacity(0.4), radius: 18, x: 0, y: 6)
+                            .overlay(
+                                Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                            )
+                    }
+                    .padding(.bottom, 40)
+                }
+                
+                // NavigationLinks
+                NavigationLink(
+                    destination: ActivitySummaryView(activity: completedActivity),
+                    isActive: $navigateToActivitySummary
+                ) { EmptyView() }
+                NavigationLink(destination: GoalsView(), isActive: $navigateToGoals) { EmptyView() }
+                NavigationLink(destination: ProfileView(), isActive: $navigateToProfile) { EmptyView() }
+            }
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle("MotionCoach")
+            .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showPermissionSheet) {
+                PermissionSheet()
+            }
+        }
+        .environmentObject(trackingEngine)
+        .environmentObject(rewardsManager)
+        .environmentObject(goalsManager)
+    }
+    
+    private var trackingBottomSheet: some View {
+        VStack(spacing: 16) {
+            // Distance (large)
+            VStack(spacing: 4) {
+                Text(formatDistance(trackingEngine.totalDistance))
+                    .font(.system(size: 48, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                Text("Distance")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            
+            HStack(spacing: 24) {
+                // Time
+                VStack(spacing: 4) {
+                    Text(formatTime(trackingEngine.elapsedTime))
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text("Time")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                }
+                
+                // Pace
+                if trackingEngine.totalDistance > 0 {
+                    VStack(spacing: 4) {
+                        Text(formatPace(trackingEngine.elapsedTime, distance: trackingEngine.totalDistance))
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundColor(.white)
+                        Text("Pace")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
+                }
+                
+                // Steps
+                if trackingEngine.steps > 0 {
+                    VStack(spacing: 4) {
+                        Text("\(trackingEngine.steps)")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundColor(.white)
+                        Text("Steps")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+            
+            // Confidence ring
+            ConfidenceRing(confidence: trackingEngine.confidenceScore)
+                .frame(height: 60)
+            
+            // Goal progress (if active goal selected)
+            if let activeGoal = goalsManager.getActiveGoals().first {
+                GoalProgressBar(goal: activeGoal, currentDistance: trackingEngine.totalDistance)
+            }
         }
         .padding()
+        .background(BlurView(style: .systemUltraThinMaterialDark))
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .padding(.horizontal)
+        .padding(.bottom, 20)
+    }
+    
+    private var goalsCarousel: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(goalsManager.getActiveGoals()) { goal in
+                    GoalCard(goal: goal)
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+    
+    @ViewBuilder
+    func statusChip(title: String, value: String, systemImage: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.green)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+                Text(value)
+                    .font(.headline)
+                    .foregroundColor(.white)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(BlurView(style: .systemUltraThinMaterialDark))
+        .clipShape(Capsule())
+        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 2)
+    }
+    
+    private func checkLocationPermission() {
+        let manager = CLLocationManager()
+        let status = manager.authorizationStatus
+        if status == .notDetermined {
+            showPermissionSheet = true
+        }
+    }
+    
+    private func formatDistance(_ meters: Double) -> String {
+        if meters >= 1000 {
+            return String(format: "%.2f km", meters / 1000.0)
+        } else {
+            return String(format: "%.0f m", meters)
+        }
+    }
+    
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        let hours = Int(seconds) / 3600
+        let minutes = Int(seconds) / 60 % 60
+        let secs = Int(seconds) % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        } else {
+            return String(format: "%d:%02d", minutes, secs)
+        }
+    }
+    
+    private func formatPace(_ seconds: TimeInterval, distance: Double) -> String {
+        guard distance > 0 else { return "--:--" }
+        let paceSeconds = (seconds / distance) * 1000.0
+        let minutes = Int(paceSeconds) / 60
+        let secs = Int(paceSeconds) % 60
+        return String(format: "%d:%02d", minutes, secs)
     }
 }
 
+struct GoalCard: View {
+    let goal: Goal
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(goal.title)
+                .font(.headline)
+                .foregroundColor(.white)
+            
+            Text(goalDescription)
+                .font(.caption)
+                .foregroundColor(.gray)
+            
+            ProgressView(value: progress, total: 1.0)
+                .tint(.green)
+        }
+        .padding()
+        .frame(width: 200)
+        .background(BlurView(style: .systemUltraThinMaterialDark))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private var goalDescription: String {
+        switch goal.type {
+        case .distance:
+            return "\(String(format: "%.1f", goal.targetValue / 1000.0)) km"
+        case .duration:
+            return "\(String(format: "%.0f", goal.targetValue / 60.0)) min"
+        default:
+            return goal.type.rawValue
+        }
+    }
+    
+    private var progress: Double {
+        // For MVP, return 0. This would be calculated from current activity
+        return 0.0
+    }
+}
+
+struct GoalProgressBar: View {
+    let goal: Goal
+    let currentDistance: Double
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(goal.title)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                Spacer()
+                Text("\(Int(progress * 100))%")
+                    .font(.caption)
+                    .foregroundColor(.green)
+            }
+            
+            ProgressView(value: progress, total: 1.0)
+                .tint(.green)
+        }
+    }
+    
+    private var progress: Double {
+        guard goal.type == .distance else { return 0 }
+        return min(1.0, currentDistance / goal.targetValue)
+    }
+}
+
+struct ConfidenceRing: View {
+    let confidence: Double
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.gray.opacity(0.2), lineWidth: 6)
+            
+            Circle()
+                .trim(from: 0, to: confidence)
+                .stroke(
+                    AngularGradient(
+                        colors: [.red, .yellow, .green],
+                        center: .center
+                    ),
+                    style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+            
+            VStack(spacing: 2) {
+                Text("\(Int(confidence * 100))%")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Text("Confidence")
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+            }
+        }
+    }
+}
+
+struct PermissionSheet: View {
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            Image(systemName: "location.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.green)
+            
+            Text("Location Access Required")
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+            
+            Text("MotionCoach needs your location to track your activities and verify your goals. Your data stays private and is stored only on your device.")
+                .font(.body)
+                .foregroundColor(.gray)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            
+            Button(action: {
+                let manager = CLLocationManager()
+                manager.requestWhenInUseAuthorization()
+                dismiss()
+            }) {
+                Text("Enable Location")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.green)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .padding(.horizontal)
+            
+            Button(action: { dismiss() }) {
+                Text("Not Now")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+            }
+        }
+        .padding()
+        .background(Color.black.ignoresSafeArea())
+    }
+}
+
+struct GoalsView: View {
+    @EnvironmentObject var goalsManager: GoalsManager
+    @State private var showCreateGoal = false
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                if goalsManager.goals.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "target")
+                            .font(.system(size: 60))
+                            .foregroundColor(.gray)
+                        Text("No Goals Yet")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                        Text("Create your first goal to get started")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                    }
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 16) {
+                            ForEach(goalsManager.goals) { goal in
+                                GoalRowView(goal: goal)
+                            }
+                        }
+                        .padding()
+                    }
+                }
+            }
+            .navigationTitle("Goals")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { showCreateGoal = true }) {
+                        Image(systemName: "plus")
+                            .foregroundColor(.green)
+                    }
+                }
+            }
+            .sheet(isPresented: $showCreateGoal) {
+                CreateGoalView()
+            }
+        }
+    }
+}
+
+struct GoalRowView: View {
+    let goal: Goal
+    @EnvironmentObject var goalsManager: GoalsManager
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(goal.title)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Spacer()
+                Text(goal.status.rawValue.capitalized)
+                    .font(.caption)
+                    .foregroundColor(statusColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(statusColor.opacity(0.2))
+                    .clipShape(Capsule())
+            }
+            
+            Text(goalDescription)
+                .font(.subheadline)
+                .foregroundColor(.gray)
+            
+            if goal.status == .active {
+                ProgressView(value: 0.0, total: 1.0)
+                    .tint(.green)
+            }
+        }
+        .padding()
+        .background(BlurView(style: .systemUltraThinMaterialDark))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private var goalDescription: String {
+        var desc = "\(goal.type.rawValue.capitalized): "
+        switch goal.type {
+        case .distance:
+            desc += "\(String(format: "%.2f", goal.targetValue / 1000.0)) km"
+        case .duration:
+            desc += "\(String(format: "%.0f", goal.targetValue / 60.0)) min"
+        case .elevationGain:
+            desc += "\(String(format: "%.0f", goal.targetValue)) m"
+        case .sessionsCount:
+            desc += "\(Int(goal.targetValue)) sessions"
+        }
+        desc += " • \(goal.timeframe.rawValue.capitalized)"
+        return desc
+    }
+    
+    private var statusColor: Color {
+        switch goal.status {
+        case .active: return .green
+        case .completed: return .blue
+        case .expired: return .gray
+        }
+    }
+}
+
+struct CreateGoalView: View {
+    @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var goalsManager: GoalsManager
+    
+    @State private var title = ""
+    @State private var selectedType: GoalType = .distance
+    @State private var targetValue: Double = 2.0
+    @State private var selectedTimeframe: Timeframe = .today
+    @State private var selectedActivities: Set<ActivityType> = [.run]
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Goal Details") {
+                    TextField("Goal Title", text: $title)
+                    
+                    Picker("Type", selection: $selectedType) {
+                        ForEach(GoalType.allCases, id: \.self) { type in
+                            Text(type.rawValue.capitalized).tag(type)
+                        }
+                    }
+                    
+                    HStack {
+                        Text("Target")
+                        Spacer()
+                        TextField("Value", value: $targetValue, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                        Text(unitLabel)
+                            .foregroundColor(.gray)
+                    }
+                }
+                
+                Section("Timeframe") {
+                    Picker("Timeframe", selection: $selectedTimeframe) {
+                        ForEach(Timeframe.allCases, id: \.self) { timeframe in
+                            Text(timeframe.rawValue.capitalized).tag(timeframe)
+                        }
+                    }
+                }
+                
+                Section("Allowed Activities") {
+                    ForEach(ActivityType.allCases.filter { $0 != .unknown }, id: \.self) { activity in
+                        Toggle(activity.rawValue.capitalized, isOn: Binding(
+                            get: { selectedActivities.contains(activity) },
+                            set: { isOn in
+                                if isOn {
+                                    selectedActivities.insert(activity)
+                                } else {
+                                    selectedActivities.remove(activity)
+                                }
+                            }
+                        ))
+                    }
+                }
+            }
+            .navigationTitle("New Goal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        createGoal()
+                    }
+                    .disabled(title.isEmpty || selectedActivities.isEmpty)
+                }
+            }
+            .preferredColorScheme(.dark)
+        }
+    }
+    
+    private var unitLabel: String {
+        switch selectedType {
+        case .distance: return "km"
+        case .duration: return "min"
+        case .elevationGain: return "m"
+        case .sessionsCount: return "sessions"
+        }
+    }
+    
+    private func createGoal() {
+        let value = selectedType == .distance ? targetValue * 1000.0 : (selectedType == .duration ? targetValue * 60.0 : targetValue)
+        goalsManager.createGoal(
+            title: title,
+            type: selectedType,
+            targetValue: value,
+            timeframe: selectedTimeframe,
+            allowedActivities: Array(selectedActivities)
+        )
+        dismiss()
+    }
+}
+
+extension GoalType: CaseIterable {}
+
+struct ProfileView: View {
+    @EnvironmentObject var rewardsManager: RewardsManager
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Level & XP
+                    VStack(spacing: 16) {
+                        Text("Level \(rewardsManager.userProgress.level)")
+                            .font(.system(size: 48, weight: .bold))
+                            .foregroundColor(.white)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("\(rewardsManager.userProgress.currentXP) XP")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Text("\(rewardsManager.getXPForNextLevel()) XP to next level")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                            
+                            ProgressView(value: rewardsManager.getXPProgress(), total: 1.0)
+                                .tint(.green)
+                        }
+                    }
+                    .padding()
+                    .background(BlurView(style: .systemUltraThinMaterialDark))
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    
+                    // Streak
+                    HStack(spacing: 24) {
+                        VStack {
+                            Text("\(rewardsManager.userProgress.streakDays)")
+                                .font(.system(size: 36, weight: .bold))
+                                .foregroundColor(.orange)
+                            Text("Day Streak")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                        
+                        VStack {
+                            Text("\(rewardsManager.userProgress.weeklyCompletionsCount)")
+                                .font(.system(size: 36, weight: .bold))
+                                .foregroundColor(.green)
+                            Text("This Week")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(BlurView(style: .systemUltraThinMaterialDark))
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    
+                    // Achievements placeholder
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Achievements")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        
+                        Text("Coming soon")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(BlurView(style: .systemUltraThinMaterialDark))
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                }
+                .padding()
+            }
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+struct ActivitySummaryView: View {
+    let activity: Activity?
+    @EnvironmentObject var rewardsManager: RewardsManager
+    @EnvironmentObject var goalsManager: GoalsManager
+    @Environment(\.dismiss) var dismiss
+    
+    @State private var showCompletionAnimation = false
+    @State private var verifiedGoals: [Goal] = []
+    @State private var insights: ActivityInsights?
+    private let insightsEngine = LLMInsightsEngine()
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                if let activity = activity {
+                    VStack(spacing: 24) {
+                        // Map with route
+                        let routePath = activity.mapMatchedPath.isEmpty ? activity.fusedPath : activity.mapMatchedPath
+                        MapViewWithPolyline(
+                            region: .constant(regionForActivity(activity)),
+                            showsUserLocation: false,
+                            userTrackingMode: .none,
+                            polylineCoordinates: routePath
+                        )
+                        .frame(height: 300)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        
+                        // Stats cards
+                        VStack(spacing: 16) {
+                            StatCard(
+                                title: "Distance",
+                                value: formatDistance(activity.distanceMetersMatched),
+                                icon: "figure.walk"
+                            )
+                            
+                            HStack(spacing: 16) {
+                                StatCard(
+                                    title: "Duration",
+                                    value: formatTime(activity.durationSeconds),
+                                    icon: "clock"
+                                )
+                                
+                                if let pace = activity.avgPaceSecPerKm {
+                                    StatCard(
+                                        title: "Pace",
+                                        value: formatPace(pace),
+                                        icon: "speedometer"
+                                    )
+                                }
+                            }
+                            
+                            HStack(spacing: 16) {
+                                StatCard(
+                                    title: "Steps",
+                                    value: "\(activity.steps)",
+                                    icon: "figure.walk"
+                                )
+                                
+                                StatCard(
+                                    title: "Confidence",
+                                    value: "\(Int(activity.confidenceScoreAvg * 100))%",
+                                    icon: "checkmark.shield"
+                                )
+                            }
+                        }
+                        
+                        // Verified badge
+                        if activity.confidenceScoreAvg >= 0.7 && activity.gpsAnomalyCount <= 3 {
+                            HStack {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .foregroundColor(.green)
+                                Text("Verified Activity")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                            }
+                            .padding()
+                            .background(Color.green.opacity(0.2))
+                            .clipShape(Capsule())
+                        }
+                        
+                        // LLM Insights
+                        if let insights = insights {
+                            VStack(alignment: .leading, spacing: 16) {
+                                Text("Activity Insights")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                
+                                Text(insights.summary)
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                                
+                                if !insights.coachingTips.isEmpty {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Coaching Tips")
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.green)
+                                        
+                                        ForEach(insights.coachingTips, id: \.self) { tip in
+                                            HStack(alignment: .top, spacing: 8) {
+                                                Image(systemName: "lightbulb.fill")
+                                                    .foregroundColor(.green)
+                                                    .font(.caption)
+                                                Text(tip)
+                                                    .font(.caption)
+                                                    .foregroundColor(.gray)
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                Text(insights.motivationalMessage)
+                                    .font(.subheadline)
+                                    .italic()
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .padding(.top, 8)
+                            }
+                            .padding()
+                            .background(BlurView(style: .systemUltraThinMaterialDark))
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                        }
+                        
+                        // Goal completion
+                        if !verifiedGoals.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Goals Completed")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                
+                                ForEach(verifiedGoals) { goal in
+                                    GoalCompletionCard(goal: goal)
+                                }
+                            }
+                            .padding()
+                            .background(BlurView(style: .systemUltraThinMaterialDark))
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                        }
+                    }
+                    .padding()
+                } else {
+                    Text("No activity data")
+                        .foregroundColor(.gray)
+                }
+            }
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle("Activity Summary")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .onAppear {
+                verifyGoals()
+                generateInsights()
+            }
+    
+    private func generateInsights() {
+        guard let activity = activity else { return }
+        insights = insightsEngine.generateActivityInsights(activity: activity)
+    }
+        }
+    }
+    
+    private func verifyGoals() {
+        guard let activity = activity else { return }
+        
+        for goal in goalsManager.getActiveGoals() {
+            let result = VerificationEngine.verify(goal: goal, activity: activity)
+            if result.passed {
+                verifiedGoals.append(goal)
+                rewardsManager.completeGoal(goal, activity: activity)
+                
+                // Update goal status
+                var updatedGoal = goal
+                updatedGoal.status = .completed
+                goalsManager.updateGoal(updatedGoal)
+            }
+        }
+        
+        if !verifiedGoals.isEmpty {
+            showCompletionAnimation = true
+        }
+    }
+    
+    private func regionForActivity(_ activity: Activity) -> MKCoordinateRegion {
+        let path = activity.mapMatchedPath.isEmpty ? activity.fusedPath : activity.mapMatchedPath
+        guard !path.isEmpty else {
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 37.334_900, longitude: -122.009_020),
+                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            )
+        }
+        
+        let lats = path.map { $0.latitude }
+        let lons = path.map { $0.longitude }
+        let minLat = lats.min()!
+        let maxLat = lats.max()!
+        let minLon = lons.min()!
+        let maxLon = lons.max()!
+        
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
+        )
+        let span = MKCoordinateSpan(
+            latitudeDelta: max(maxLat - minLat, 0.01) * 1.2,
+            longitudeDelta: max(maxLon - minLon, 0.01) * 1.2
+        )
+        
+        return MKCoordinateRegion(center: center, span: span)
+    }
+    
+    private func formatDistance(_ meters: Double) -> String {
+        if meters >= 1000 {
+            return String(format: "%.2f km", meters / 1000.0)
+        } else {
+            return String(format: "%.0f m", meters)
+        }
+    }
+    
+    private func formatTime(_ seconds: Double) -> String {
+        let hours = Int(seconds) / 3600
+        let minutes = Int(seconds) / 60 % 60
+        let secs = Int(seconds) % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        } else {
+            return String(format: "%d:%02d", minutes, secs)
+        }
+    }
+    
+    private func formatPace(_ secondsPerKm: Double) -> String {
+        let minutes = Int(secondsPerKm) / 60
+        let secs = Int(secondsPerKm) % 60
+        return String(format: "%d:%02d min/km", minutes, secs)
+    }
+}
+
+struct StatCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundColor(.green)
+            Text(value)
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.gray)
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
+        .background(BlurView(style: .systemUltraThinMaterialDark))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct GoalCompletionCard: View {
+    let goal: Goal
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundColor(.green)
+            Text(goal.title)
+                .font(.headline)
+                .foregroundColor(.white)
+            Spacer()
+        }
+        .padding()
+        .background(Color.green.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct ContentView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @StateObject private var rewardsManager = RewardsManager()
+    @StateObject private var goalsManager = GoalsManager()
+    
+    var body: some View {
+        if horizontalSizeClass == .regular {
+            NavigationSplitView {
+                List {
+                    NavigationLink("Home", value: Tab.home)
+                    NavigationLink("Goals", value: Tab.goals)
+                    NavigationLink("Profile", value: Tab.profile)
+                }
+                .listStyle(SidebarListStyle())
+                .navigationTitle("Menu")
+            } detail: {
+                TabViewContainer()
+            }
+        } else {
+            NavigationStack {
+                TabViewContainer()
+            }
+        }
+    }
+    
+    enum Tab: Hashable {
+        case home, goals, profile
+    }
+    
+    @State private var selection: Tab = .home
+    
+    @ViewBuilder
+    private func TabViewContainer() -> some View {
+        TabView(selection: $selection) {
+            HomeMapView()
+                .tabItem {
+                    Label("Home", systemImage: "map.fill")
+                }
+                .tag(Tab.home)
+            
+            GoalsView()
+                .tabItem {
+                    Label("Goals", systemImage: "target")
+                }
+                .tag(Tab.goals)
+            
+            ProfileView()
+                .tabItem {
+                    Label("Profile", systemImage: "person.crop.circle")
+                }
+                .tag(Tab.profile)
+        }
+        .preferredColorScheme(.dark)
+        .environmentObject(rewardsManager)
+        .environmentObject(goalsManager)
+    }
+}
+
+// Helper for blur effect (UIKit wrapper)
+struct BlurView: UIViewRepresentable {
+    let style: UIBlurEffect.Style
+    func makeUIView(context: Context) -> UIVisualEffectView {
+        UIVisualEffectView(effect: UIBlurEffect(style: style))
+    }
+    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {}
+}
+
+
 #Preview {
-    ContentView()
+    Group {
+        ContentView()
+            .preferredColorScheme(.dark)
+    }
 }
