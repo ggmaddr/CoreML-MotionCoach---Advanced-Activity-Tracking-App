@@ -17,7 +17,7 @@ MotionCoach demonstrates advanced sensor fusion, machine learning, and location 
   - **Prediction Step**: Uses motion model (velocity + heading) to predict next position
   - **Update Step**: Fuses GPS measurement with prediction using weighted average
   - **Covariance Tracking**: Maintains uncertainty estimates for each position
-  
+
 - **Complementary Filter**: Fuses gyroscope (short-term accuracy) with magnetometer (long-term accuracy) for heading estimation
 
 - **Dead Reckoning**: When GPS is unavailable, estimates position by integrating accelerometer data
@@ -203,7 +203,7 @@ let insights = await openAIClient.generate(prompt: prompt)
 
 ---
 
-## 🚀 Performance Optimizations
+<!-- ## 🚀 Performance Optimizations
 
 1. **Battery Efficiency**:
    - Adaptive sampling rates
@@ -220,7 +220,7 @@ let insights = await openAIClient.generate(prompt: prompt)
    - Efficient coordinate storage
    - Lazy evaluation where possible
 
----
+--- -->
 
 ## 🔮 Future Enhancements (Research Directions)
 

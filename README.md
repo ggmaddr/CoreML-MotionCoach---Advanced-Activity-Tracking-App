@@ -60,18 +60,6 @@ I also implemented the Douglas-Peucker algorithm to simplify paths without losin
 After each activity, the app generates a natural language summary and coaching tips. Right now it uses template-based generation with the activity data, but it's designed to easily swap in an API call to OpenAI or Claude for more sophisticated analysis.
 
 ---
-
-## Performance
-
-I tested it in different environments and compared GPS-only vs with sensor fusion:
-
-- **Urban areas** (buildings): 20-50m → 5-15m (70% better)
-- **Tree cover**: 10-30m → 4-10m (65% better)  
-- **Open areas**: 5-10m → 2-5m (50% better)
-- **Battery**: ~10% per hour → ~5% per hour
-
----
-
 ## Algorithms
 
 ### Trust Scoring
@@ -166,24 +154,6 @@ This was a deep dive into how location and motion tracking really works on iOS. 
 - Feature engineering matters more than I expected for activity classification
 
 The Kalman filter math was challenging but satisfying once I got it working properly. Seeing the fused location track smoothly through areas where GPS alone was jumping around was pretty cool.
-
----
-
-## Running the App
-
-**Requirements:**
-- iOS 26.0+
-- Xcode 16.0+
-- Real iPhone (motion sensors don't work in simulator)
-
-**Setup:**
-```bash
-git clone https://github.com/yourusername/MotionCoach.git
-cd MotionCoach
-open CoreML.xcodeproj
-```
-
-Build and run on your phone, grant permissions, and start tracking.
 
 ---
 
